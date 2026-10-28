@@ -2279,7 +2279,8 @@ class Directory_Builder_String_Package {
                 $meta_key,
                 [],
                 is_array( $target_meta_value ) ? $target_meta_value : [],
-                (string) apply_filters( 'wpml_current_language', null )
+                (string) apply_filters( 'wpml_current_language', null ),
+                $this->get_package( $source_directory_id )
             );
 
             return [ $translated_value ];
@@ -2336,9 +2337,10 @@ class Directory_Builder_String_Package {
      * @param array  $path                Current nested path.
      * @param array  $existing            Existing translated builder value.
      * @param string $language_code       Target language code.
+     * @param array  $package             Shared package definition for this traversal.
      * @return array
      */
-    private function translate_meta_value( $data, $source_directory_id, $meta_key, $path = [], $existing = [], $language_code = '' ) {
+    private function translate_meta_value( $data, $source_directory_id, $meta_key, $path = [], $existing = [], $language_code = '', $package = [] ) {
         foreach ( $data as $key => $value ) {
             $current_path = array_merge( $path, [ (string) $key ] );
             $existing_value = is_array( $existing ) && array_key_exists( $key, $existing ) ? $existing[ $key ] : null;
@@ -2350,7 +2352,8 @@ class Directory_Builder_String_Package {
                     $meta_key,
                     $current_path,
                     is_array( $existing_value ) ? $existing_value : [],
-                    $language_code
+                    $language_code,
+                    $package
                 );
                 continue;
             }
@@ -2360,7 +2363,7 @@ class Directory_Builder_String_Package {
             }
 
             $string = $this->build_string_data( $meta_key, $current_path, $value );
-            $translated_value = $this->translate_package_string( $value, $string['name'], $this->get_package( $source_directory_id ) );
+            $translated_value = $this->translate_package_string( $value, $string['name'], $package );
 
             if ( $translated_value !== $value ) {
                 $data[ $key ] = $translated_value;
@@ -3621,15 +3624,17 @@ class Directory_Builder_String_Package {
      * @return mixed
      */
     private function get_raw_term_meta( $term_id, $meta_key, $single = true ) {
-        global $wpdb;
+        $term_id = (int) $term_id;
+        $cache   = wp_cache_get( $term_id, 'term_meta' );
 
-        $values = $wpdb->get_col(
-            $wpdb->prepare(
-                "SELECT meta_value FROM {$wpdb->termmeta} WHERE term_id = %d AND meta_key = %s ORDER BY meta_id ASC",
-                (int) $term_id,
-                $meta_key
-            )
-        );
+        // Read the raw core cache so metadata translation filters do not run
+        // recursively. WordPress invalidates this cache when term meta changes.
+        if ( false === $cache ) {
+            $meta_cache = update_meta_cache( 'term', [ $term_id ] );
+            $cache      = isset( $meta_cache[ $term_id ] ) ? $meta_cache[ $term_id ] : [];
+        }
+
+        $values = isset( $cache[ $meta_key ] ) ? $cache[ $meta_key ] : [];
 
         if ( empty( $values ) ) {
             return $single ? '' : [];

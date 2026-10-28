@@ -271,15 +271,15 @@ class Directory_Type_Meta_Translation {
      * @return bool
      */
     private function term_meta_exists( $term_id, $meta_key ) {
-        global $wpdb;
+        $term_id = (int) $term_id;
+        $cache   = wp_cache_get( $term_id, 'term_meta' );
 
-        return (bool) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT meta_id FROM {$wpdb->termmeta} WHERE term_id = %d AND meta_key = %s LIMIT 1",
-                (int) $term_id,
-                $meta_key
-            )
-        );
+        if ( false === $cache ) {
+            $meta_cache = update_meta_cache( 'term', [ $term_id ] );
+            $cache      = isset( $meta_cache[ $term_id ] ) ? $meta_cache[ $term_id ] : [];
+        }
+
+        return isset( $cache[ $meta_key ] );
     }
 
     /**
